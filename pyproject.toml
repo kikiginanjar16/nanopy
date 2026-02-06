@@ -1,0 +1,16 @@
+[project]
+name = "nanopybot"
+version = "0.2.0"
+description = "Tiny nanobot-like AI assistant with self-learning and cron scheduler"
+requires-python = ">=3.10"
+dependencies = [
+  "typer>=0.12.0",
+  "pydantic>=2.6.0",
+  "httpx>=0.27.0",
+  "rich>=13.7.0",
+  "apscheduler>=3.10.4",
+  "sqlalchemy>=2.0.0",
+]
+
+[project.scripts]
+nanopy = "nanopybot.cli:app"
