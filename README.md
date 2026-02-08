@@ -86,8 +86,11 @@ nanopy agent 'tool:time {}'
 # Contoh menggunakan tool 'search' untuk mencari di Google
 nanopy agent 'tool:search {"q": "harga bitcoin hari ini"}'
 
-# Contoh menggunakan tool 'greet' (jika sudah dibuat)
-nanopy agent 'tool:greet {"name": "Kiki"}'
+# Contoh menggunakan tool 'weather' untuk cek cuaca
+nanopy agent 'tool:weather {"city": "Jakarta"}'
+
+# Contoh menggunakan tool 'currency' untuk konversi mata uang
+nanopy agent 'tool:currency {"from": "USD", "to": "IDR", "amount": 100}'
 ```
 
 #### 2. Cara Menambah Tool Baru

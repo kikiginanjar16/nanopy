@@ -71,6 +71,18 @@ nanopy agent "Bagaimana cuaca di Jakarta hari ini? Apakah cocok untuk lari sore?
 > [Auto-exec] Calling weather tool...
 > Cuaca di Jakarta saat ini sebagian berawan dengan suhu 27°C. Karena kelembapan cukup tinggi (84%), jika ingin lari sore disarankan untuk membawa air minum tambahan agar tidak dehidrasi.
 
+### Konversi Mata Uang (Currency Tool)
+Bot bisa membantu menghitung nilai tukar mata uang terbaru.
+
+**Input:**
+```bash
+nanopy agent "Berapa Rp 5.000.000 kalau diubah ke USD?"
+```
+
+**Output:**
+> [Auto-exec] Calling currency tool...
+> Rp 5.000.000 setara dengan sekitar 312,50 USD (berdasarkan nilai tukar saat ini).
+
 ---
 
 ## 4. Membuat Tool Baru Secara Dinamis
