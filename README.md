@@ -40,19 +40,25 @@ pip install -e .
 
 ## ⚙️ Configuration
 
-NanoPyBot stores its data in `~/.nanopybot/`. On the first run, a default `config.json` will be created.
+NanoPyBot checks for `config.json` in the current directory first, making it easy for local development. If not found, it falls back to `~/.nanopybot/config.json`.
 
-Update your configuration at `~/.nanopybot/config.json`:
+1. **Option A (Local)**: Edit `config.json` in the project root.
+2. **Option B (Global)**: Edit `~/.nanopybot/config.json`.
+
+Example configuration:
 
 ```json
 {
   "provider": {
-    "api_key": "your-api-key-here",
+    "api_key": "your-openai-api-key",
     "base_url": "https://api.openai.com/v1",
     "model": "gpt-4o-mini"
-  }
+  },
+  "serper_api_key": "your-serper-api-key"
 }
 ```
+
+> **Catatan**: `serper_api_key` digunakan oleh tool `search` untuk melakukan pencarian di Google. Anda bisa mendapatkan API key gratis di [Serper.dev](https://serper.dev/).
 
 ---
 
@@ -68,28 +74,47 @@ nanopy agent "Hello, please give me a short logic puzzle."
 ### 🧠 Self-Learning Prompt
 If you tell the agent "Please answer in Indonesian from now on", it will store this as a persistent rule and apply it to all subsequent requests.
 
-### 🔧 Running Tools
-Execute built-in tools using the `tool:` prefix:
+### 🔧 Penggunaan Tools
+Tools memungkinkan NanoPyBot melakukan tugas teknis seperti cek waktu, kalkulasi, atau akses API.
 
+#### 1. Cara Menggunakan Tool (Manual)
+Anda bisa memicu tool secara langsung dari terminal menggunakan prefix `tool:` diikuti nama tool dan argumen dalam format JSON.
 ```bash
-# Get the current Unix timestamp
+# Contoh menggunakan tool bawaan 'time'
 nanopy agent 'tool:time {}'
+
+# Contoh menggunakan tool 'search' untuk mencari di Google
+nanopy agent 'tool:search {"q": "harga bitcoin hari ini"}'
+
+# Contoh menggunakan tool 'greet' (jika sudah dibuat)
+nanopy agent 'tool:greet {"name": "Kiki"}'
 ```
 
-### 📅 Automation (Cron)
-Schedule tasks to run periodically.
+#### 2. Cara Menambah Tool Baru
+Ada dua cara untuk mendaftarkan tool ke dalam NanoPyBot:
 
-```bash
-# Add a daily task at 07:00 AM
-nanopy cron-add --name "daily-summary" --message "Summarize my day" --cron "0 7 * * *"
+**A. Melalui Chat (Dynamic Creation)**
+Ini cara termudah. Cukup minta bot di dalam chat untuk membuatkan fungsi baru.
+- **Perintah**: `"Buatkan saya tool untuk [tugas tertentu]"`
+- **Proses**: Bot akan menulis kode Python secara otomatis ke folder `custom_tools/`.
+- **Hasil**: Tool langsung aktif dan bisa digunakan selamanya.
 
-# List and run the scheduler service
-nanopy cron-run
-```
+**B. Melalui File Python (Manual Registration)**
+Jika Anda ingin menulis kode sendiri, Anda bisa menambahkan file `.py` ke folder `~/.nanopybot/custom_tools/`.
+1. Buat file baru, misal `hello.py`.
+2. Pastikan memiliki variabel `DESCRIPTION` dan fungsi `run(args)`.
+   ```python
+   DESCRIPTION = "Tool sederhana untuk menyapa"
+
+   def run(args):
+       name = args.get("name", "User")
+       return f"Halo {name} dari file kustom!"
+   ```
+3. Restart bot atau jalankan perintah `nanopy`, tool akan otomatis terdaftar.
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ Mekanisme Internal
 
 NanoPyBot is designed with modularity in mind:
 - **CLI**: Powered by `Typer` and `Rich`.
@@ -103,9 +128,10 @@ For a detailed breakdown, see [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ## 🛠️ Troubleshooting
 
-- **Provider Error (401)**: Double-check your API key in `~/.nanopybot/config.json`.
+- **Provider Error (401)**: Double-check your API key in `config.json` or `~/.nanopybot/config.json`.
+- **Command Not Found**: Ensure you have activated the virtual environment (`source .venv/bin/activate`) and installed the package (`pip install -e .`).
 - **Invalid Cron**: Ensure you use the 5-field format (`* * * * *`).
-- **Persistence**: If jobs or memory aren't saving, check write permissions for `~/.nanopybot/`.
+- **Persistence**: Jika jadwal atau memori tidak tersimpan, pastikan program memiliki izin tulis (write permission) di folder project atau `~/.nanopybot/`.
 
 ---
 

@@ -1,16 +1,18 @@
 # Architecture Overview
 
-Dokumen ini menjelaskan arsitektur aplikasi `nanopybot_selflearn_cron` berdasarkan implementasi saat ini.
+Dokumen ini menjelaskan arsitektur aplikasi `nanopybot` berdasarkan implementasi terbaru yang mendukung *Self-Learning* dan *Dynamic Tooling*.
 
 ## System Context
 
 ```mermaid
-flowchart LR
+flowchart TD
     U["User (CLI)"] --> C["Typer CLI (`nanopybot/cli.py`)"]
     C --> A["Agent (`nanopybot/agent.py`)"]
     A --> P["OpenAI-Compatible Provider (`nanopybot/provider.py`)"]
     A --> M["Memory Store (`nanopybot/memory.py`)"]
     A --> T["Tool Registry (`nanopybot/tools.py`)"]
+    T --> CT["Custom Tools (`~/.nanopybot/custom_tools/*.py`)"]
+    A -- "Auto-exec" --> T
     C --> S["Scheduler (`nanopybot/scheduler.py`)"]
     S --> J["Cron Runner (`nanopybot/cron_runner.py`)"]
     J --> A
@@ -19,121 +21,79 @@ flowchart LR
 ## Core Components
 
 - `nanopybot/cli.py`
-  - Entry point command `nanopy`.
-  - Menyediakan command:
-    - `agent <message>`
-    - `cron-add --name --message --cron`
-    - `cron-run`
-  - Menangani error provider (`ProviderError`) untuk command `agent`.
+  - Entry point utama perintah `nanopy`.
+  - Menginisialisasi `Agent` dengan menyuntikkan konfigurasi dan path tool kustom.
 
 - `nanopybot/config.py`
-  - Load dan bootstrap konfigurasi dari `~/.nanopybot/config.json`.
-  - Menyimpan konfigurasi provider (`api_key`, `base_url`, `model`), memory path, scheduler db path.
+  - Menangani pemuatan konfigurasi dari `config.json` lokal atau `~/.nanopybot/config.json`.
+  - Menyimpan kunci API (OpenAI, Serper), path memori, dan path tool kustom.
 
 - `nanopybot/agent.py`
-  - Orkestrator utama request.
-  - Deteksi feedback user via `detect_feedback`.
-  - Simpan feedback terakhir ke memory key `rules.last`.
-  - Menyuntikkan `rules.last` ke system prompt untuk request selanjutnya.
-  - Menangani jalur tool call lokal dengan format pesan `tool:<name> <json_args>`.
-
-- `nanopybot/provider.py`
-  - Adapter HTTP ke endpoint OpenAI-compatible `/chat/completions`.
-  - Input: list `ChatMessage`.
-  - Output: `choices[0].message.content`.
-  - Error handling:
-    - HTTP status error -> `ProviderError` dengan detail response.
-    - Network/request error -> `ProviderError`.
-    - Response format invalid -> `ProviderError`.
-
-- `nanopybot/memory.py`
-  - KV store berbasis file JSON.
-  - Operasi utama: `get`, `put`, `delete`, `keys`.
-  - Persistence ke file pada setiap update.
+  - **Orkestrator Cerdas**: Mengelola alur percakapan dan deteksi feedback.
+  - **Auto-Summarization**: Jika AI memanggil tool, Agent akan mengeksekusi tool tersebut, mengirim hasilnya kembali ke AI, dan memberikan ringkasan akhir kepada user.
+  - Mengelola memori aturan (`rules.list`) yang disuntikkan ke dalam *System Prompt*.
 
 - `nanopybot/tools.py`
-  - Registry tool sederhana (`register`, `has`, `call`).
-  - Tool default saat ini:
-    - `time`: mengembalikan Unix timestamp.
+  - **Dynamic Registry**: Memuat tool bawaan dan tool kustom dari disk secara dinamis.
+  - **Tool Injection**: Menyuntikkan objek konfigurasi ke dalam fungsi tool sehingga tool kustom bisa mengakses API key atau setting lainnya.
+  - **`create_tool`**: Tool bawaan yang memungkinkan AI menulis file Python baru ke disk untuk menambah kemampuannya sendiri.
 
-- `nanopybot/scheduler.py`
-  - Inisialisasi `APScheduler` dengan `SQLAlchemyJobStore` (SQLite).
-  - Parser cron expression 5 field (`minute hour day month day_of_week`) + validasi format.
+- `nanopybot/provider.py`
+  - Terhubung ke API OpenAI-compatible.
 
-- `nanopybot/cron_runner.py`
-  - Job function untuk scheduler.
-  - Membaca payload JSON, lalu menjalankan agent secara async (`asyncio.run`).
+- `nanopybot/memory.py`
+  - Penyimpanan KV berbasis JSON untuk preferensi user.
 
 ## Runtime Flows
 
-### 1) Direct Chat Flow (`nanopy agent "..."`)
+### 1) Chat & Auto-Summarize Flow
+Alur ketika AI menggunakan tool dan merangkum hasilnya.
 
 ```mermaid
 sequenceDiagram
     participant User
-    participant CLI as CLI
-    participant Agent as Agent
-    participant Memory as MemoryStore
-    participant Provider as Provider
+    participant Agent
+    participant Tool
+    participant Provider
 
-    User->>CLI: nanopy agent "message"
-    CLI->>Agent: run(message)
-    Agent->>Memory: detect/store feedback (optional)
-    Agent->>Memory: get("rules.last")
-    Agent->>Provider: chat(messages)
-    Provider-->>Agent: content / error
-    Agent-->>CLI: response
-    CLI-->>User: print output
+    User->>Agent: "Cek cuaca di Jakarta"
+    Agent->>Provider: Chat (Prompt + Tool Info)
+    Provider-->>Agent: Output: "tool:weather {city: Jakarta}"
+    Agent->>Tool: execute weather tool
+    Tool-->>Agent: Data: "27°C, Berawan"
+    Agent->>Provider: Chat (Tool Result + Summary Request)
+    Provider-->>Agent: Final: "Cuaca Jakarta saat ini 27°C..."
+    Agent-->>User: Tampilkan Ringkasan Akhir
 ```
 
-### 2) Tool Call Flow (`nanopy agent 'tool:time {}'`)
+### 2) Dynamic Tool Creation
+Alur ketika AI membuat kemampuan baru.
 
 ```mermaid
 sequenceDiagram
     participant User
-    participant CLI as CLI
-    participant Agent as Agent
-    participant Tools as ToolRegistry
+    participant Agent
+    participant ToolReg
+    participant Disk
 
-    User->>CLI: nanopy agent "tool:time {}"
-    CLI->>Agent: run(message)
-    Agent->>Tools: has("time")
-    Agent->>Tools: call("time", {})
-    Tools-->>Agent: unix timestamp
-    Agent-->>CLI: [tool:time] <value>
-    CLI-->>User: print output
-```
-
-### 3) Scheduled Flow (`nanopy cron-add` + `nanopy cron-run`)
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant CLI as CLI
-    participant Scheduler as APScheduler
-    participant Runner as cron_runner
-    participant Agent as Agent
-
-    User->>CLI: nanopy cron-add --name ... --cron ...
-    CLI->>Scheduler: add_job(run_agent_job, CronTrigger)
-    Scheduler-->>CLI: job stored in sqlite
-
-    User->>CLI: nanopy cron-run
-    CLI->>Scheduler: start()
-    Scheduler->>Runner: execute run_agent_job(payload_json) on schedule
-    Runner->>Agent: build_agent().run(message)
+    User->>Agent: "Buatkan tool baca PDF"
+    Agent->>ToolReg: call create_tool(name, code)
+    ToolReg->>Disk: Write "read_pdf.py"
+    ToolReg->>ToolReg: Reload & Register New Tool
+    Agent-->>User: "Tool berhasil dibuat"
 ```
 
 ## Data & Storage
 
-- Config: `~/.nanopybot/config.json`
-- Memory: `~/.nanopybot/memory.json`
-- Scheduler job store: `~/.nanopybot/jobs.sqlite`
+- **Config**: `~/.nanopybot/config.json` (Setting API & Path)
+- **Memory**: `~/.nanopybot/memory.json` (Aturan Self-Learning)
+- **Jobs**: `~/.nanopybot/jobs.sqlite` (Jadwal Cron)
+- **Custom Tools**: `~/.nanopybot/custom_tools/` (Script Python buatan AI)
 
 ## Current Architectural Characteristics
 
-- Sederhana, file-based persistence, mudah dijalankan lokal.
-- Provider terpisah sebagai adapter, memudahkan ganti backend kompatibel OpenAI.
-- Scheduler persisten via SQLite (job tetap ada setelah restart proses).
-- Tool-calling masih berbasis parsing string sederhana (belum function-calling native model).
-- Memory belum punya rotasi/TTL/locking; cocok untuk skala kecil/single-process.
+- **Extensible**: Bot bisa belajar dan menambah fiturnya sendiri tanpa modifikasi kode inti.
+- **Stateful**: Memiliki memori jangka panjang untuk preferensi user.
+- **Resilient**: Jadwal tugas (Cron) tetap aman di SQLite meskipun sistem restart.
+- **Context Aware**: Tool memiliki akses ke konfigurasi global melalui injeksi objek config.
+- **Interactive**: Mendukung feedback loop di mana hasil tool diproses kembali oleh AI untuk kemudahan user.

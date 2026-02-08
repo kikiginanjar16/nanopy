@@ -13,6 +13,8 @@ class AppCfg(BaseModel):
     provider: ProviderCfg = ProviderCfg()
     memory_path: str = str(Path.home() / ".nanopybot" / "memory.json")
     scheduler_db: str = str(Path.home() / ".nanopybot" / "jobs.sqlite")
+    custom_tools_path: str = str(Path.home() / ".nanopybot" / "custom_tools")
+    serper_api_key: str | None = None
 
 def load_config() -> AppCfg:
     # 1. Check current directory first for local development

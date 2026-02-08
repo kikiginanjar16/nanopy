@@ -15,7 +15,7 @@ def build_agent():
     p = cfg.provider
     return Agent(
         OpenAICompatProvider(p.api_key, p.base_url, p.model),
-        default_tools(),
+        default_tools(cfg.custom_tools_path, cfg),
         MemoryStore(cfg.memory_path),
     )
 
